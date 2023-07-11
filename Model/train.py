@@ -108,7 +108,7 @@ def train(cfg: DictConfig) -> None:
     criterion_bond = nn.CrossEntropyLoss(ignore_index=len(BOND_IDX)+1)
 
     # Log
-    mlflow.set_tracking_uri("file:/" + hydra.utils.get_original_cwd() + "/mlruns")
+    mlflow.set_tracking_uri("file://" + hydra.utils.get_original_cwd() + "/mlruns")#("file:/" + hydra.utils.get_original_cwd() + "/mlruns")
     mlflow.start_run()
     mlflow.log_param("batch_size", cfg["train"]["batch_size"])
     mlflow.log_param("lr", cfg["train"]["lr"])

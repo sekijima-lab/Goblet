@@ -53,7 +53,7 @@ class TrainConfig:
 class SamplingConfig:
     model_dir: str = "/ckpt/pretrain/ver2/"
     max_step: int = 20
-    num: int = 100
+    num: int = 10000
     model_ver: int = 20
     seed_smiles: str = "C"
 

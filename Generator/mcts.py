@@ -444,7 +444,7 @@ class FineMCTS:
 def main(cfg: DictConfig):
     smiles_list = read_smilesset(hydra.utils.get_original_cwd()+"/data/zinc_250k.smi")
     sampler = Sampler(cfg)
-    reward_module = getReward(name="QED")
+    reward_module = getReward(name="QSAR")
 
     # nums = []
     # from tqdm import tqdm
@@ -463,7 +463,7 @@ def main(cfg: DictConfig):
 
     smiles = "O=c1n(CCO)c2ccccc2n1CCO"
     # mcts = FineMCTS(seed_smiles=smiles, reward_module=reward_module, sampler=sampler)
-    mcts = CoarseMCTS(seed_smiles=smiles, reward_name="QED", sampler=sampler)
+    mcts = CoarseMCTS(seed_smiles=smiles, reward_name="QSAR", sampler=sampler)
     mcts.search(n_step_coarse=2000, n_step_fine=100)
 
     df = pd.DataFrame()

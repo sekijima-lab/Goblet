@@ -129,3 +129,18 @@ dmypy.json
 .pyre/
 
 .idea
+
+# archive file
+*.zip
+
+# model raw file
+*.pth
+Model/outputs/*
+mlruns/*
+data/features/ver2/*
+log/*
+outputs/*
+
+# Private ShellScript File
+*.sh*
+aizynth*

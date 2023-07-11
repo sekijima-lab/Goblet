@@ -14,6 +14,11 @@ from rdkit.Chem import AllChem, QED, DataStructs, Descriptors
 
 from Utils.sascore import calculateScore
 
+import pickle
+from sklearn.ensemble import RandomForestRegressor
+import numpy as np
+import hydra
+
 
 def getReward(name, seed_smiles="", th=0.6):
     if name == "QED":
@@ -22,8 +27,23 @@ def getReward(name, seed_smiles="", th=0.6):
         return PenalizedLogPReward()
     elif name == "ConstPLogP":
         return ConstPLogPReward(seed_smiles=seed_smiles, th=th)
+    elif name == "QSAR":
+        return QSARReward()
 
+class QSARReward:
+    def __init__(self):
+        self.model: RandomForestRegressor = pickle.load(open(hydra.utils.get_original_cwd()+"/data/features/ver2/qsar.pickle","rb"))
+    def reward(self, mol):
+        #if mol is not None:
+        ar = np.zeros(2048)
+        bitvect = AllChem.GetMorganFingerprintAsBitVect(mol,2,2048)
+        Chem.DataStructs.ConvertToNumpyArray(bitvect,ar)
 
+        br = [ar.tolist()]
+        #model: RandomForestRegressor = pickle.load(open("model.pickle","rb"))
+
+        pred = self.model.predict(np.array(br))
+        return pred[0]       
 class PenalizedLogPReward:
     def __init__(self):
         self.vmin = -100
