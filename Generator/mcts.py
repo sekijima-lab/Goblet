@@ -23,6 +23,10 @@ from rdkit import RDLogger
 # RDLogger.DisableLog('rdApp.*')
 RDLogger.DisableLog('rdApp.info')
 
+import copy
+from functools import reduce
+import json
+from scipy import spatial
 
 class AtomNode:
     def __init__(self, smiles, att_mid=-1):
@@ -438,6 +442,128 @@ class FineMCTS:
 
             print("---Fine MCTS step %d ---" % self.step)
             print("MAX_SCORE:", self.max_score, self.max_score - self.init_score)
+
+class Pareto():
+    """
+    Pareto Front Class
+    """
+
+    def __init__(self,front=None,cfg:DictConfig=None) -> None:
+        """
+        Constructor
+
+        Input:
+            - front: reward score vectors in pareto front
+        """
+        self.CONFIG = cfg
+        self.front = front if front is not None else [[0 for _ in range(len(self.CONFIG["reward"]["reward_list"]))]]
+
+    @classmethod
+    def filter_(cls, pts, pt):
+        """
+        Get all points in pts that are not Pareto dominated by the point pt
+        """
+        weakly_worse   = (pts <= pt).all(axis=-1)
+        strictly_worse = (pts < pt).any(axis=-1)
+        return pts[~(weakly_worse & strictly_worse)]
+
+    @classmethod
+    def get_pareto_undominated_by(cls, pts1, pts2=None):
+        """
+        Return all points in pts1 that are not Pareto dominated
+        by any points in pts2
+        """
+        if pts2 is None:
+            pts2 = pts1
+        return reduce(Pareto.filter_, pts2, pts1)
+
+    @classmethod
+    def get_pareto_frontier(cls, pts)->np.ndarray:
+        """
+        Iteratively filter points based on the convex hull heuristic
+        """
+        pareto_groups = []
+
+        # loop while there are points remaining
+        while pts.shape[0]:
+            # brute force if there are few points:
+            if pts.shape[0] < 10:
+                pareto_groups.append(Pareto.get_pareto_undominated_by(pts))
+                break
+
+            # compute vertices of the convex hull
+            hull_vertices = spatial.ConvexHull(pts).vertices
+
+            # get corresponding points
+            hull_pts = pts[hull_vertices]
+
+            # get points in pts that are not convex hull vertices
+            nonhull_mask = np.ones(pts.shape[0], dtype=bool)
+            nonhull_mask[hull_vertices] = False
+            pts = pts[nonhull_mask]
+
+            # get points in the convex hull that are on the Pareto frontier
+            pareto   = Pareto.get_pareto_undominated_by(hull_pts)
+            pareto_groups.append(pareto)
+
+            # filter remaining points to keep those not dominated by
+            # Pareto points of the convex hull
+            pts = Pareto.get_pareto_undominated_by(pts, pareto)
+
+        return np.vstack(pareto_groups)
+
+    def __get_new_tmp_pareto(self,m:list)->list:
+        
+        __tmp_front = copy.deepcopy(self.front)
+        __tmp_front.append(m)
+        __tmp_front = Pareto.get_pareto_undominated_by(np.array(__tmp_front)).tolist()
+        return __tmp_front
+
+
+    def dominated(self, m:list)->bool:
+        """Is point m dominated in reward space?
+        
+            Input
+                - m: reward vector to decide dominated or not: List type
+
+            Return
+                - False: Dominated
+                - True: Non-dominated (in pareto front)
+        """
+        return m in self.__get_new_tmp_pareto(m)
+    
+    def update(self,scores:list)->None:
+        """
+        Update Pareto Front
+        Input:
+            - scores: reward vector
+        Return:
+            - None
+        """
+        self.front = self.__get_new_tmp_pareto(scores)
+        with open(self.CONFIG["mcts"]["out_dir"]+"present/output.txt", 'a') as f:
+            f.write(f"pareto size:{len(self.front)}\n")
+            f.write(f"Updated pareto front\n{self.front}\n")
+            f.write(f"Time:{time.asctime(time.localtime(time.time()))}\n")
+        print(f"pareto size:{len(self.front)}")
+
+    @staticmethod
+    def from_dict(_filename, cfg: DictConfig):
+        """Pareto front backup from files
+            WARNING: you should check _filename file exists
+            Input:
+                - _filename: filepath of pareto.json
+
+            Return:
+                - Initialized Pareto front
+        """
+        with open(_filename, 'r') as f:
+            _set_json = json.load(f)
+            new_pareto = Pareto(front= _set_json['front'], cfg =cfg)
+        print("Loaded Pareto Fronts")
+        return new_pareto
+    
+    ## TODO: Generator/mcts.py ~ 973 to 1063
 
 
 @hydra.main(config_path="../config/", config_name="config")

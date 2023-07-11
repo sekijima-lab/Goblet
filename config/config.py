@@ -66,6 +66,25 @@ class ExperimentConfig:
     model_dir: str = "/ckpt/pretrain/ver2/"
     model_ver: int = 20
 
+@dataclass
+class MCTSConfig:
+    n_step: int = 1000
+    n_iter: int = 3
+    seq_len: int = 25
+    in_smiles_file: str = "/Data/input/init_smiles.smi" #TODO: merge to data_dir
+    rep_file: str = ""
+    modeL_dir: str = "/ckpt/"
+    out_dir: str = "/Data/output/" # TODO: merge to data_dir
+    ucb_c: float = 1/math.sqrt(2)
+    model_ver: int = 100
+    model_dir: str = "/ckpt/"
+    reward_name: str = "PLogP"
+    data_dir: str = "/data_templete/"
+    isLoadTree: bool = False
+    time_limit_sec: int = 10*60
+    sascore_threshold: float = 3.5
+    tanimoto_threshold: float = 0.0
+
 
 @dataclass
 class Config:
@@ -76,6 +95,7 @@ class Config:
     sample: SamplingConfig = SamplingConfig()
     # rl: RLConfig = RLConfig()
     exp: ExperimentConfig = ExperimentConfig()
+    mcts: MCTSConfig = MCTSConfig()
 
 
 cs = ConfigStore.instance()
