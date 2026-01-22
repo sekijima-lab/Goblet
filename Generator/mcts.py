@@ -97,7 +97,7 @@ class MolNode:
 
 
 class CoarseMCTS:
-    def __init__(self, seed_smiles, reward_name, sampler, max_score=-1e+5, th=0.):
+    def __init__(self, seed_smiles, reward_module, sampler, max_score=-1e+5, th=0.):
         self.root = AtomNode(smiles=seed_smiles)
         self.sampler = sampler
         self.current_node = None
@@ -109,13 +109,16 @@ class CoarseMCTS:
         self.max_score = max_score
         self.generated_smiles = pd.DataFrame()
         self.max_seq = 10
-        self.reward_module = getReward(name=reward_name, seed_smiles=seed_smiles, th=th)
-        self.reward_name = reward_name
+        self.reward_module = reward_module #getReward(name=reward_name, seed_smiles=seed_smiles, th=th)
+        #self.reward_name = reward_name
         self.init_score = self.reward_module.reward(Chem.MolFromSmiles(seed_smiles))
 
     def set_state(self, node):
-        seed_mol = Chem.MolFromSmiles(node.smiles)
-        seed_mol = setBFSorder(seed_mol)
+        if isinstance(node.smiles,str):
+            seed_mol = Chem.MolFromSmiles(node.smiles)
+            seed_mol = setBFSorder(seed_mol)
+        else:
+            return
         # print(Chem.MolToSmiles(seed_mol))
 
         for bond in seed_mol.GetBonds():
@@ -178,25 +181,29 @@ class CoarseMCTS:
 
     def _simulate(self, n_step, num_next_state=3):
         print("--- Sim ---")
-        fine_mcts = FineMCTS(seed_smiles=self.current_node.smiles, reward_module=self.reward_module,
-                             sampler=self.sampler)
-        fine_mcts.search(n_step=n_step, start_step=self.step)
-        self.max_score = max(self.max_score, fine_mcts.max_score)
+        if isinstance(self.current_node.smiles, str):
+            fine_mcts = FineMCTS(seed_smiles=self.current_node.smiles, reward_module=self.reward_module,
+                                sampler=self.sampler)
+            fine_mcts.search(n_step=n_step, start_step=self.step)
+            self.max_score = max(self.max_score, fine_mcts.max_score)
 
-        df = pd.DataFrame()
-        df["SMILES"] = fine_mcts.generated_smiles["SMILES"]
-        df["Reward"] = fine_mcts.generated_smiles["Reward"]
-        df["Step"] = fine_mcts.generated_smiles["Step"]
-        df["Imp"] = df["Reward"] - self.reward_module.reward(Chem.MolFromSmiles(self.current_node.smiles))
-        self.generated_smiles = pd.concat([self.generated_smiles, df])
-        df = df[df["Imp"] > 0]
+            df = pd.DataFrame()
+            df["SMILES"] = fine_mcts.generated_smiles["SMILES"]
+            df["Reward"] = fine_mcts.generated_smiles["Reward"]
+            df["Step"] = fine_mcts.generated_smiles["Step"]
+            df["Imp"] = df["Reward"] - self.reward_module.reward(Chem.MolFromSmiles(self.current_node.smiles))
+            self.generated_smiles = pd.concat([self.generated_smiles, df])
+            df = df[df["Imp"] > 0]
 
-        if len(df) > 0:
-            next_states = self._select_next_state(df)
-            for smiles, value in zip(next_states["SMILES"].to_list(), next_states["Reward"].to_list()):
-                cnode = MolNode(smiles=smiles)
-                self.set_state(cnode)
-                self.current_node.add_Node(cnode)
+            if len(df) > 0:
+                next_states = self._select_next_state(df)
+                #for smiles, value in zip(next_states["SMILES"].to_list(), next_states["Reward"].to_list()):
+                for smiles in next_states["SMILES"].to_list():
+                    cnode = MolNode(smiles=smiles)
+                    self.set_state(cnode)
+                    self.current_node.add_Node(cnode)
+        else:
+            return
 
         # for cnode in self.current_node.children:
         #     if Chem.MolFromSmiles(cnode.smiles) is None:
@@ -232,7 +239,8 @@ class CoarseMCTS:
 
     def _select_next_state(self, df):
         next_states = df.sample(n=min(len(df), 3))
-        next_states.append(df.iloc[0])
+        #next_states.append(df.iloc[0])
+        next_states = pd.concat([next_states, df.iloc[0]], ignore_index=True, axis=0)
 
         return next_states.drop_duplicates()
 
@@ -569,8 +577,10 @@ class Pareto():
 @hydra.main(config_path="../config/", config_name="config")
 def main(cfg: DictConfig):
     smiles_list = read_smilesset(hydra.utils.get_original_cwd()+"/data/zinc_250k.smi")
-    sampler = Sampler(cfg)
-    reward_module = getReward(name="QSAR")
+    sampler = Sampler(cfg, model_dir=cfg["sample"]["model_dir"], model_ver=cfg["sample"]["model_ver"])
+    reward_module = getReward(name=cfg["mcts"]["reward_name"])
+    if cfg["mcts"]["reward_name"] == "Boltz":
+        reward_module.path_to_workspace = hydra.utils.get_original_cwd()+cfg["mcts"]["work_space"]
 
     # nums = []
     # from tqdm import tqdm
@@ -587,9 +597,9 @@ def main(cfg: DictConfig):
     #
     # print(np.mean(nums), np.std(nums))
 
-    smiles = "O=c1n(CCO)c2ccccc2n1CCO"
-    # mcts = FineMCTS(seed_smiles=smiles, reward_module=reward_module, sampler=sampler)
-    mcts = CoarseMCTS(seed_smiles=smiles, reward_name="QSAR", sampler=sampler)
+    smiles = "CCC" #"O=c1n(CCO)c2ccccc2n1CCO"
+    mcts = FineMCTS(seed_smiles=smiles, reward_module=reward_module, sampler=sampler)
+    mcts = CoarseMCTS(seed_smiles=smiles, reward_module=reward_module, sampler=sampler)
     mcts.search(n_step_coarse=2000, n_step_fine=100)
 
     df = pd.DataFrame()
@@ -607,7 +617,7 @@ def main(cfg: DictConfig):
     df["Step"] = mcts.generated_smiles["Step"]
     df["Imp"] = df["Reward"] - reward_module.reward(Chem.MolFromSmiles(smiles))
     df = df.sort_values("Reward", ascending=False)
-    df.to_csv(hydra.utils.get_original_cwd()+"/data/result/sample.csv", index=False)
+    df.to_csv(hydra.utils.get_original_cwd()+f"/data/result/{cfg['mcts']['output_fname']}", index=False)
 
 
 if __name__ == '__main__':

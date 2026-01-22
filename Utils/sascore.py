@@ -25,8 +25,9 @@ import hydra
 
 from rdkit import Chem
 from rdkit.Chem import rdMolDescriptors
-from rdkit.six.moves import cPickle
-from rdkit.six import iteritems
+#from rdkit.six.moves import cPickle
+import pickle as cPickle
+#from rdkit.six import iteritems
 
 import math
 from collections import defaultdict
@@ -42,7 +43,10 @@ def readFragmentScores(name='fpscores'):
     # generate the full path filename:
     if name == "fpscores":
         name = op.join(op.dirname(__file__), name)
-    _fscores = cPickle.load(gzip.open(hydra.utils.get_original_cwd()+'/%s.pkl.gz' % name))
+        name = name + '.pkl.gz'
+    else:
+        name = hydra.utils.get_original_cwd()+'/%s.pkl.gz' % name
+    _fscores = cPickle.load(gzip.open(name))
     outDict = {}
     for i in _fscores:
         for j in range(1, len(i)):
@@ -64,7 +68,8 @@ def calculateScore(m):
     fps = fp.GetNonzeroElements()
     score1 = 0.
     nf = 0
-    for bitId, v in iteritems(fps):
+    #for bitId, v in iteritems(fps):
+    for bitId, v in fps.items():
         nf += v
         sfp = bitId
         score1 += _fscores.get(sfp, -4) * v

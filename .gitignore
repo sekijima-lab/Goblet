@@ -144,3 +144,13 @@ outputs/*
 # Private ShellScript File
 *.sh*
 aizynth*
+
+# Experimental logs
+wkdir/*
+boltz.e*
+boltz.o*
+plogp_*
+Experiment/*/result*/*.csv
+Experiment/*/*.csv
+Experiment/*/*.hdf5
+

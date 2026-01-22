@@ -9,8 +9,11 @@ warnings.filterwarnings('ignore')
 import rdkit.Chem as Chem
 from rdkit import RDLogger
 RDLogger.DisableLog('rdApp.*')
-from rdkit.six.moves import cPickle
+#from rdkit.six.moves import cPickle
+import pickle as cPickle
 from rdkit.Chem import AllChem, QED, DataStructs, Descriptors
+import subprocess
+from boltz.data.parse.schema import compute_3d_conformer
 
 from Utils.sascore import calculateScore
 
@@ -18,6 +21,8 @@ import pickle
 from sklearn.ensemble import RandomForestRegressor
 import numpy as np
 import hydra
+import pandas as pd
+from pathlib import Path
 
 
 def getReward(name, seed_smiles="", th=0.6):
@@ -29,6 +34,8 @@ def getReward(name, seed_smiles="", th=0.6):
         return ConstPLogPReward(seed_smiles=seed_smiles, th=th)
     elif name == "QSAR":
         return QSARReward()
+    elif name =="Boltzina":
+        return BoltziniaReward()
 
 class QSARReward:
     def __init__(self):
@@ -146,3 +153,20 @@ class SimilarityReward:
         sim = DataStructs.TanimotoSimilarity(self.seed_fp, gent_fp)
 
         return sim
+
+class BoltziniaReward:
+    def __init__(self):
+        self.vmin = 0.1
+        self.path_to_boltzinia = os.environ.get("HOME")+"/big_shared/GARGOYLES_boltz/boltzina/"
+        self.path_to_workspace = hydra.utils.get_original_cwd()+"/wkdir/"
+
+    def reward(self, mol):
+        Path(self.path_to_workspace+f"ligand.smi").write_text(Chem.MolToSmiles(mol)+"\n")
+        subprocess.run([self.path_to_boltzinia+".venv/bin/python", self.path_to_boltzinia+"run.py", self.path_to_workspace+"3zos_ddr1_config.json","--work_dir",f"{self.path_to_workspace}"[:-1],"--output_dir",f"{self.path_to_workspace}"[:-1],"--output_file",f"{self.path_to_workspace}results.csv","--vina_override", "--ligand_files", f"{self.path_to_workspace}ligand.pdb"], cwd = hydra.utils.get_original_cwd())
+
+        df = pd.read_csv(self.path_to_workspace+f'results.csv')
+        score = df.affinity_pred_value[0]
+        return score
+
+        
+
