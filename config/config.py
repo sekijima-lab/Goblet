@@ -84,6 +84,9 @@ class MCTSConfig:
     time_limit_sec: int = 10*60
     sascore_threshold: float = 3.5
     tanimoto_threshold: float = 0.0
+    output_fname: str = "output.csv"
+    work_space: str = "/wkdir/0/"
+    
 
 
 @dataclass

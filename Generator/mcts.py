@@ -579,7 +579,7 @@ def main(cfg: DictConfig):
     smiles_list = read_smilesset(hydra.utils.get_original_cwd()+"/data/zinc_250k.smi")
     sampler = Sampler(cfg, model_dir=cfg["sample"]["model_dir"], model_ver=cfg["sample"]["model_ver"])
     reward_module = getReward(name=cfg["mcts"]["reward_name"])
-    if cfg["mcts"]["reward_name"] == "Boltz":
+    if cfg["mcts"]["reward_name"] == "Boltzina":
         reward_module.path_to_workspace = hydra.utils.get_original_cwd()+cfg["mcts"]["work_space"]
 
     # nums = []
