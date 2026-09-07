@@ -208,7 +208,7 @@ class CoarseMCTS:
         # for cnode in self.current_node.children:
         #     if Chem.MolFromSmiles(cnode.smiles) is None:
         #         continue
-        #
+        
         #     rollout_result = self.sampler.sample(smiles=cnode.smiles, n=5)
         #     if len(rollout_result) == 0:
         #         cnode.imm_score = -10000
@@ -217,7 +217,7 @@ class CoarseMCTS:
         #     else:
         #         mol_list = self._add_fragment(cnode, frag_smiles=rollout_result[0])
         #         reward_list = []
-        #
+        
         #         if mol_list is not None and len(mol_list) > 0:
         #             mol_list = [Chem.MolFromSmiles(Chem.MolToSmiles(mol)) for mol in mol_list]
         #             mol_list = [mol for mol in mol_list if mol is not None]
@@ -579,8 +579,13 @@ def main(cfg: DictConfig):
     smiles_list = read_smilesset(hydra.utils.get_original_cwd()+"/data/zinc_250k.smi")
     sampler = Sampler(cfg, model_dir=cfg["sample"]["model_dir"], model_ver=cfg["sample"]["model_ver"])
     reward_module = getReward(name=cfg["mcts"]["reward_name"])
-    if cfg["mcts"]["reward_name"] == "Boltzina":
+    if cfg["mcts"]["reward_name"] == "Boltzina" or cfg["mcts"]["reward_name"] == "Boltz" or cfg["mcts"]["reward_name"] == "vina"or cfg["mcts"]["reward_name"] == "RBoltz" or cfg["mcts"]["reward_name"] == "Svina" or cfg["mcts"]["reward_name"] == "ASBoltz":
         reward_module.path_to_workspace = hydra.utils.get_original_cwd()+cfg["mcts"]["work_space"]
+    if cfg["mcts"]["reward_name"] == "ABoltz" or cfg["mcts"]["reward_name"] == "ASBoltz":
+        reward_module.path_to_workspace = hydra.utils.get_original_cwd()+cfg["mcts"]["work_space"]
+        reward_module.set_data(hydra.utils.get_original_cwd()+cfg["mcts"]["work_space"])
+    if cfg["mcts"]["reward_name"] == "vina" or cfg["mcts"]["reward_name"] == "Svina":
+        reward_module.tgt_file = cfg["mcts"]["target_protein_basename"]
 
     # nums = []
     # from tqdm import tqdm
@@ -597,10 +602,10 @@ def main(cfg: DictConfig):
     #
     # print(np.mean(nums), np.std(nums))
 
-    smiles = "CCC" #"O=c1n(CCO)c2ccccc2n1CCO"
-    mcts = FineMCTS(seed_smiles=smiles, reward_module=reward_module, sampler=sampler)
+    smiles = cfg["mcts"]["init_smiles"] #"CNC1(c2ccccc2)C2CC3C4OCC42C31C(C#N)=CN" #"CCC(CC(=O)N1CC1)C12CC3C(NC)(c4ccccc4)C1C31COC21" #"C=Cc1cccc(C2(NC)C3CC4C5OCC53C42)c1" #"c1ccccc1"
+    # mcts = FineMCTS(seed_smiles=smiles, reward_module=reward_module, sampler=sampler)
     mcts = CoarseMCTS(seed_smiles=smiles, reward_module=reward_module, sampler=sampler)
-    mcts.search(n_step_coarse=2000, n_step_fine=100)
+    mcts.search(n_step_coarse=500, n_step_fine=20)
 
     df = pd.DataFrame()
 
@@ -617,7 +622,7 @@ def main(cfg: DictConfig):
     df["Step"] = mcts.generated_smiles["Step"]
     df["Imp"] = df["Reward"] - reward_module.reward(Chem.MolFromSmiles(smiles))
     df = df.sort_values("Reward", ascending=False)
-    df.to_csv(hydra.utils.get_original_cwd()+f"/data/result/{cfg['mcts']['output_fname']}", index=False)
+    df.to_csv(hydra.utils.get_original_cwd()+f"/data/result/{cfg['mcts']['output_fname']}", index=True)
 
 
 if __name__ == '__main__':

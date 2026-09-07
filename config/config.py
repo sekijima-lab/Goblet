@@ -2,7 +2,7 @@ from hydra.core.config_store import ConfigStore
 from dataclasses import dataclass
 from typing import Tuple
 from Utils.mol_utils import ATOM_IDX, BOND_IDX
-
+import math
 
 @dataclass
 class EmbConfig:
@@ -86,6 +86,8 @@ class MCTSConfig:
     tanimoto_threshold: float = 0.0
     output_fname: str = "output.csv"
     work_space: str = "/wkdir/0/"
+    init_smiles: str = "c1ccccc1"
+    target_protein_basename: str = "akt1_3cqw"
     
 
 

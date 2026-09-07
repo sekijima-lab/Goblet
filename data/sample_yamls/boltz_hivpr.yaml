@@ -1,0 +1,14 @@
+version: 1
+sequences:
+- protein:
+    id:
+    - A
+    sequence: 
+      PQITLWQRPLVTIKIGGQLKEALLDTXAXDTVLEEMSLPGRWKPKMIXGIGGFIKVRQYDQILIEICGKAIGTVLVGPTPVNIIGRNLLTQIGCTLNF
+    msa: msa_hivpr.a3m
+- ligand:
+    id: B
+    smiles: 'CNCC[c:6]1[cH:4][cH:2][cH:1][cH:3][cH:5]1'
+properties:
+- affinity:
+    binder: B
