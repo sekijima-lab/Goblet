@@ -108,6 +108,9 @@ def train(cfg: DictConfig) -> None:
     criterion_bond = nn.CrossEntropyLoss(ignore_index=len(BOND_IDX)+1)
 
     # Log
+    # Preserve Goblet's existing local mlruns layout with MLflow 3.16.
+    # Respect an explicit opt-out; database migration is a separate operation.
+    os.environ.setdefault("MLFLOW_ALLOW_FILE_STORE", "true")
     mlflow.set_tracking_uri("file://" + hydra.utils.get_original_cwd() + "/mlruns")#("file:/" + hydra.utils.get_original_cwd() + "/mlruns")
     mlflow.start_run()
     mlflow.log_param("batch_size", cfg["train"]["batch_size"])
