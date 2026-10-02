@@ -1,0 +1,178 @@
+{
+  "mlflow_version": "2.11.3",
+  "snapshot": {
+    "params": {
+      "epoch": "2",
+      "data_size": "1000000",
+      "batch_size": "256",
+      "lr": "0.0001"
+    },
+    "metrics": {
+      "Test loss": 0.28125,
+      "Test Bond accuracy": 0.35624999999999996,
+      "Train Bond accuracy": 0.26249999999999996,
+      "Train Total loss": 0.1875,
+      "Test Atom loss": 0.30000000000000004,
+      "Test Bond loss": 0.31875000000000003,
+      "Train Bond loss": 0.22499999999999998,
+      "Train Atom loss": 0.20625000000000002,
+      "Train Atom accuracy": 0.24375000000000002,
+      "Test Atom accuracy": 0.3375
+    },
+    "histories": {
+      "Test Atom accuracy": [
+        {
+          "step": 1,
+          "value": 0.675
+        },
+        {
+          "step": 2,
+          "value": 0.3375
+        }
+      ],
+      "Test Atom loss": [
+        {
+          "step": 1,
+          "value": 0.6000000000000001
+        },
+        {
+          "step": 2,
+          "value": 0.30000000000000004
+        }
+      ],
+      "Test Bond accuracy": [
+        {
+          "step": 1,
+          "value": 0.7124999999999999
+        },
+        {
+          "step": 2,
+          "value": 0.35624999999999996
+        }
+      ],
+      "Test Bond loss": [
+        {
+          "step": 1,
+          "value": 0.6375000000000001
+        },
+        {
+          "step": 2,
+          "value": 0.31875000000000003
+        }
+      ],
+      "Test loss": [
+        {
+          "step": 1,
+          "value": 0.5625
+        },
+        {
+          "step": 2,
+          "value": 0.28125
+        }
+      ],
+      "Train Atom accuracy": [
+        {
+          "step": 1,
+          "value": 0.48750000000000004
+        },
+        {
+          "step": 2,
+          "value": 0.24375000000000002
+        }
+      ],
+      "Train Atom loss": [
+        {
+          "step": 1,
+          "value": 0.41250000000000003
+        },
+        {
+          "step": 2,
+          "value": 0.20625000000000002
+        }
+      ],
+      "Train Bond accuracy": [
+        {
+          "step": 1,
+          "value": 0.5249999999999999
+        },
+        {
+          "step": 2,
+          "value": 0.26249999999999996
+        }
+      ],
+      "Train Bond loss": [
+        {
+          "step": 1,
+          "value": 0.44999999999999996
+        },
+        {
+          "step": 2,
+          "value": 0.22499999999999998
+        }
+      ],
+      "Train Total loss": [
+        {
+          "step": 1,
+          "value": 0.375
+        },
+        {
+          "step": 2,
+          "value": 0.1875
+        }
+      ]
+    },
+    "status": "FINISHED",
+    "artifact_names": [
+      "pretrain-ver2.txt"
+    ],
+    "artifact_sha256": "2e9acdf5ddc34508d5431e6eb75d2e1c96b43c148b3840baa39e15f0733a121c"
+  },
+  "legacy_run_id": "d29e4ed251c445be8c28c32be10eb2a9",
+  "legacy_metadata": {
+    "experiment_id": "0",
+    "start_time": 1790921140245,
+    "end_time": 1790921140445
+  },
+  "legacy_metric_timestamps": {
+    "Test loss": [
+      1790921140333,
+      1790921140377
+    ],
+    "Test Bond accuracy": [
+      1790921140343,
+      1790921140402
+    ],
+    "Train Bond accuracy": [
+      1790921140330,
+      1790921140371
+    ],
+    "Train Total loss": [
+      1790921140312,
+      1790921140346
+    ],
+    "Test Atom loss": [
+      1790921140335,
+      1790921140383
+    ],
+    "Test Bond loss": [
+      1790921140338,
+      1790921140390
+    ],
+    "Train Bond loss": [
+      1790921140323,
+      1790921140359
+    ],
+    "Train Atom loss": [
+      1790921140316,
+      1790921140352
+    ],
+    "Train Atom accuracy": [
+      1790921140327,
+      1790921140365
+    ],
+    "Test Atom accuracy": [
+      1790921140341,
+      1790921140396
+    ]
+  }
+}
