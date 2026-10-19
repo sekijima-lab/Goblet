@@ -1,0 +1,15 @@
+artifact_uri: __PORTABLE_ARTIFACT_URI__
+end_time: 1790921140445
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+run_id: d29e4ed251c445be8c28c32be10eb2a9
+run_name: placid-robin-133
+run_uuid: d29e4ed251c445be8c28c32be10eb2a9
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1790921140245
+status: 3
+tags: []
+user_id: yasuo
