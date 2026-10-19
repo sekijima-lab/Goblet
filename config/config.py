@@ -69,6 +69,7 @@ class ExperimentConfig:
 @dataclass
 class MCTSConfig:
     n_step: int = 1000
+    n_step_fine: int = 20
     n_iter: int = 3
     seq_len: int = 25
     in_smiles_file: str = "/Data/input/init_smiles.smi" #TODO: merge to data_dir

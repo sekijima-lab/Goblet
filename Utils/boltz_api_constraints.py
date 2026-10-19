@@ -135,8 +135,9 @@ async def lifespan(app: FastAPI):
     print("🚀 サーバー起動: 構造予測モデルとAffinityモデルを両方ロードします...")
     torch.set_float32_matmul_precision("high")
     torch.set_grad_enabled(False)
-    local_ = os.environ.get("HOME")
-    cache_dir = Path(local_+"/.boltz")#.expanduser()
+    cache_dir = Path(
+        os.environ.get("BOLTZ_CACHE_DIR", str(Path.home() / ".boltz"))
+    ).expanduser()
     mol_dir = cache_dir / "mols"
     conf_checkpoint = cache_dir / "boltz2_conf.ckpt"
     aff_checkpoint = cache_dir / "boltz2_aff.ckpt"
@@ -206,8 +207,9 @@ import time
 async def predict_affinity(req: DockingRequest):
     __start = time.time()
     seed_everything(42, workers=True)
-    t4_tmp_env = os.environ.get("T4TMPDIR")
-    base_tmp_dir = Path(t4_tmp_env+"/wkdir").resolve()
+    base_tmp_dir = Path(
+        os.environ.get("T4TMPDIR", tempfile.gettempdir())
+    ).resolve() / "wkdir"
     base_tmp_dir.mkdir(parents=True, exist_ok=True)
     tmp_dir = Path(tempfile.mkdtemp(prefix=f"boltz_{req.job_id}_", dir=base_tmp_dir))
     

@@ -605,7 +605,10 @@ def main(cfg: DictConfig):
     smiles = cfg["mcts"]["init_smiles"] #"CNC1(c2ccccc2)C2CC3C4OCC42C31C(C#N)=CN" #"CCC(CC(=O)N1CC1)C12CC3C(NC)(c4ccccc4)C1C31COC21" #"C=Cc1cccc(C2(NC)C3CC4C5OCC53C42)c1" #"c1ccccc1"
     # mcts = FineMCTS(seed_smiles=smiles, reward_module=reward_module, sampler=sampler)
     mcts = CoarseMCTS(seed_smiles=smiles, reward_module=reward_module, sampler=sampler)
-    mcts.search(n_step_coarse=500, n_step_fine=20)
+    mcts.search(
+        n_step_coarse=cfg["mcts"]["n_step"],
+        n_step_fine=cfg["mcts"]["n_step_fine"],
+    )
 
     df = pd.DataFrame()
 
@@ -627,4 +630,3 @@ def main(cfg: DictConfig):
 
 if __name__ == '__main__':
     main()
-

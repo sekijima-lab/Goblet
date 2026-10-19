@@ -147,10 +147,10 @@ aizynth*
 
 # Experimental logs
 wkdir/*
+data/result/
 boltz.e*
 boltz.o*
 plogp_*
 Experiment/*/result*/*.csv
 Experiment/*/*.csv
 Experiment/*/*.hdf5
-
