@@ -1,3 +1,21 @@
+"""Single-objective MCTS search over the fragment generator.
+
+Coarse receives raw simulation maxima explicitly, and Fine backs up its
+already normalized rollout values exactly once.  The previous implementation
+returned from Fine without running it whenever a Coarse simulation did not
+yield a SMILES, and then advanced the Coarse step counter by ``n_step_fine``
+anyway, so a run logged as 1,000 Coarse steps had executed far fewer Fine
+iterations.  Results are written incrementally, so a run stopped by its
+wall-time budget still leaves a usable CSV and a status file recording how
+many steps actually completed.
+
+Two optional environment variables:
+
+``GOBLET_SEARCH_DEADLINE_EPOCH``
+    Unix timestamp at which the search stops cleanly and saves.
+``GOBLET_REWARD_JOURNAL``
+    Path to a JSONL journal of every reward call (see Generator/search_budget.py).
+"""
 import sys
 import os
 import time
@@ -27,6 +45,9 @@ import copy
 from functools import reduce
 import json
 from scipy import spatial
+from pathlib import Path
+from Generator.search_budget import (BudgetedReward, SearchBudgetExceeded,
+    check_budget, install_request_timeout)
 
 class AtomNode:
     def __init__(self, smiles, att_mid=-1):
@@ -44,8 +65,18 @@ class AtomNode:
 
     def add_Node(self, c):
         c.parent = self
-        c.depth = self.depth + 1
+        c._set_depth(self.depth + 1)
         self.children.append(c)
+
+    def _set_depth(self, depth):
+        self.depth = depth
+        for child in self.children:
+            child._set_depth(depth + 1)
+
+    def remove_Node(self):
+        if self.parent is not None:
+            self.parent.children.remove(self)
+            self.parent = None
 
     def calc_UCB(self):
         if self.visit == 0:
@@ -78,8 +109,18 @@ class MolNode:
 
     def add_Node(self, c):
         c.parent = self
-        c.depth = self.depth + 1
+        c._set_depth(self.depth + 1)
         self.children.append(c)
+
+    def _set_depth(self, depth):
+        self.depth = depth
+        for child in self.children:
+            child._set_depth(depth + 1)
+
+    def remove_Node(self):
+        if self.parent is not None:
+            self.parent.children.remove(self)
+            self.parent = None
 
     def calc_UCB(self):
         if self.visit == 0:
@@ -112,6 +153,10 @@ class CoarseMCTS:
         self.reward_module = reward_module #getReward(name=reward_name, seed_smiles=seed_smiles, th=th)
         #self.reward_name = reward_name
         self.init_score = self.reward_module.reward(Chem.MolFromSmiles(seed_smiles))
+        self.completed_steps = 0
+        self.stop_reason = "step_budget"
+        self.checkpoint = None
+        self.coarse_updates = []
 
     def set_state(self, node):
         if isinstance(node.smiles,str):
@@ -162,48 +207,50 @@ class CoarseMCTS:
         #         node.add_Node(cnode)
 
     def _select(self):
-        """
-        search for the node with no child nodes and maximum UCB score
-        """
         self.current_node = self.root
-        while len(self.current_node.children) != 0:
+        while self.current_node.children:
+            check_budget()
             self.current_node = self.current_node.select_children()
-            if self.current_node.depth+1 > self.max_seq:
-                tmp = self.current_node
-                # update
-                while self.current_node is not None:
-                    self.current_node.cum_score += -1
-                    self.current_node.visit += 1
-                    self.current_node = self.current_node.parent
-                tmp.remove_Node()
-
+            if self.current_node.depth + 1 > self.max_seq:
+                rejected = self.current_node
+                node = rejected
+                while node is not None:
+                    node.cum_score -= 1
+                    node.visit += 1
+                    node = node.parent
+                rejected.remove_Node()
                 self.current_node = self.root
 
+
     def _simulate(self, n_step, num_next_state=3):
-        print("--- Sim ---")
-        if isinstance(self.current_node.smiles, str):
-            fine_mcts = FineMCTS(seed_smiles=self.current_node.smiles, reward_module=self.reward_module,
-                                sampler=self.sampler)
+        check_budget()
+        if not isinstance(self.current_node.smiles, str):
+            raise ValueError("Coarse node must contain a SMILES string")
+        fine_mcts = FineMCTS(seed_smiles=self.current_node.smiles,
+            reward_module=self.reward_module, sampler=self.sampler)
+        try:
             fine_mcts.search(n_step=n_step, start_step=self.step)
-            self.max_score = max(self.max_score, fine_mcts.max_score)
+        except SearchBudgetExceeded:
+            self.stop_reason = "walltime_budget"
+        self.completed_steps = fine_mcts.completed_steps
+        self.max_score = max(self.max_score, fine_mcts.max_score)
+        df = pd.DataFrame(fine_mcts.generated_smiles)
+        df["Imp"] = df["Reward"] - fine_mcts.init_score
+        df["FineStepComplete"] = df["Step"] <= fine_mcts.completed_steps
+        self.generated_smiles = pd.concat([self.generated_smiles, df], ignore_index=True)
+        improved = df[df["Imp"] > 0]
+        if improved.empty:
+            # An interrupted simulation is not evidence of chemical failure.
+            return None if self.stop_reason == "walltime_budget" else -10000.0
+        simulation_reward = float(improved["Reward"].max())
+        next_states = self._select_next_state(improved, num_next_state)
+        for row in next_states.itertuples(index=False):
+            cnode = MolNode(smiles=row.SMILES)
+            cnode.raw_reward = float(row.Reward)
+            self.current_node.add_Node(cnode)
+            self.set_state(cnode)
+        return simulation_reward
 
-            df = pd.DataFrame()
-            df["SMILES"] = fine_mcts.generated_smiles["SMILES"]
-            df["Reward"] = fine_mcts.generated_smiles["Reward"]
-            df["Step"] = fine_mcts.generated_smiles["Step"]
-            df["Imp"] = df["Reward"] - self.reward_module.reward(Chem.MolFromSmiles(self.current_node.smiles))
-            self.generated_smiles = pd.concat([self.generated_smiles, df])
-            df = df[df["Imp"] > 0]
-
-            if len(df) > 0:
-                next_states = self._select_next_state(df)
-                #for smiles, value in zip(next_states["SMILES"].to_list(), next_states["Reward"].to_list()):
-                for smiles in next_states["SMILES"].to_list():
-                    cnode = MolNode(smiles=smiles)
-                    self.set_state(cnode)
-                    self.current_node.add_Node(cnode)
-        else:
-            return
 
         # for cnode in self.current_node.children:
         #     if Chem.MolFromSmiles(cnode.smiles) is None:
@@ -237,12 +284,16 @@ class CoarseMCTS:
         #                 print("Reward: ", reward_list[max_id])
         #                 print(self.generated_smiles["SMILES"][-1])
 
-    def _select_next_state(self, df):
-        next_states = df.sample(n=min(len(df), 3))
-        #next_states.append(df.iloc[0])
-        next_states = pd.concat([next_states, df.iloc[0]], ignore_index=True, axis=0)
+    def _select_next_state(self, df, num_next_state=3):
+        valid = df[df["SMILES"].map(lambda s: isinstance(s, str))].copy()
+        valid = valid[np.isfinite(valid["Reward"])].drop_duplicates("SMILES")
+        if valid.empty or num_next_state < 1:
+            return valid.iloc[:0]
+        elite = valid.nlargest(1, "Reward")
+        rest = valid.drop(elite.index)
+        sampled = rest.sample(n=min(len(rest), num_next_state - 1))
+        return pd.concat([elite, sampled], ignore_index=True)
 
-        return next_states.drop_duplicates()
 
     def _add_fragment(self, node, frag_smiles):
         if Chem.MolFromSmiles(frag_smiles) is None:
@@ -256,37 +307,46 @@ class CoarseMCTS:
 
         return mol_list
 
-    def _backprop(self):
-        reward_list = []
-        for child_node in self.current_node.children:
-            reward_list.append(child_node.imm_score)
-
-        max_reward = -10000
-        if len(reward_list) > 0:
-            max_reward = max(reward_list)
+    def _backprop(self, raw_reward):
+        if raw_reward is None:
+            return
+        score = raw_reward / (1 + abs(raw_reward))
+        self.coarse_updates.append({"step": self.completed_steps,
+            "selected_smiles": self.current_node.smiles,
+            "raw_reward": raw_reward, "backup_score": score,
+            "depth": self.current_node.depth})
         while self.current_node is not None:
-            self.current_node.visit += 1
-            self.current_node.cum_score += max_reward/(1+abs(max_reward))
-            self.current_node.imm_score = max(self.current_node.imm_score, max_reward/(1+abs(max_reward)))
-            self.current_node = self.current_node.parent
+            node = self.current_node
+            node.imm_score = score if node.visit == 0 else max(node.imm_score, score)
+            node.visit += 1
+            node.cum_score += score
+            self.current_node = node.parent
+
 
     def search(self, n_step_coarse, n_step_fine, start_step=0):
         self.set_state(self.root)
         self.step = start_step
-        while self.step < n_step_coarse+start_step:
-            # 1 Selection
-            self._select()
-            print("depth: ", self.current_node.depth)
+        self.completed_steps = start_step
+        target_step = start_step + n_step_coarse
+        try:
+            while self.completed_steps < target_step:
+                check_budget()
+                self.step = self.completed_steps
+                self._select()
+                reward = self._simulate(min(n_step_fine, target_step - self.step))
+                self._backprop(reward)
+                self.step = self.completed_steps
+                if self.checkpoint:
+                    self.checkpoint(self)
+                print(f"Coarse completed_steps={self.completed_steps} max_reward={self.max_score}", flush=True)
+                if self.stop_reason == "walltime_budget":
+                    break
+        except SearchBudgetExceeded:
+            self.stop_reason = "walltime_budget"
+        finally:
+            if self.checkpoint:
+                self.checkpoint(self)
 
-            # 3 Simulation
-            self._simulate(n_step=n_step_fine)
-
-            # 4 Backpropagation
-            self._backprop()
-
-            self.step += n_step_fine
-            print("--- Coarse MCTS step %d ---" % self.step)
-            print("MAX_SCORE:", self.max_score, self.max_score - self.init_score)
 
 
 class FineMCTS:
@@ -303,6 +363,7 @@ class FineMCTS:
         self.max_seq = 10
         self.reward_module = reward_module
         self.init_score = self.reward_module.reward(Chem.MolFromSmiles(seed_smiles))
+        self.completed_steps = 0
 
     def set_initial_state(self):
         mol = Chem.MolFromSmiles(self.root.smiles)
@@ -319,21 +380,20 @@ class FineMCTS:
             self.root.add_Node(node)
 
     def _select(self):
-        """
-        search for the node with no child nodes and maximum UCB score
-        """
         self.current_node = self.root
-        while len(self.current_node.children) != 0:
+        while self.current_node.children:
+            check_budget()
             self.current_node = self.current_node.select_children()
-            if self.current_node.depth+1 > self.max_seq:
-                tmp = self.current_node
-                # update
-                while self.current_node is not None:
-                    self.current_node.cum_score += -1
-                    self.current_node.visit += 1
-                    self.current_node = self.current_node.parent
-
+            if self.current_node.depth + 1 > self.max_seq:
+                rejected = self.current_node
+                node = rejected
+                while node is not None:
+                    node.cum_score -= 1
+                    node.visit += 1
+                    node = node.parent
+                rejected.remove_Node()
                 self.current_node = self.root
+
 
     def _expand(self, n):
         print("--- Exp ---")
@@ -420,36 +480,32 @@ class FineMCTS:
         return mol_list
 
     def _backprop(self):
-        max_reward = max([cnode.imm_score for cnode in self.current_node.children])
+        # Simulation stored g(R), so back it up without applying g again.
+        score = max(cnode.imm_score for cnode in self.current_node.children)
+        score = max(-1.0, min(1.0, score))  # bound legacy invalid-rollout sentinels
         while self.current_node is not None:
-            self.current_node.visit += 1
-            self.current_node.cum_score += max_reward/(1+abs(max_reward))
-            self.current_node.imm_score = max(self.current_node.imm_score, max_reward/(1+abs(max_reward)))
-            self.current_node = self.current_node.parent
+            node = self.current_node
+            node.imm_score = score if node.visit == 0 else max(node.imm_score, score)
+            node.visit += 1
+            node.cum_score += score
+            self.current_node = node.parent
+
 
     def search(self, n_step, start_step=0):
         self.set_initial_state()
         self.step = start_step
-
-        while self.step < n_step+start_step:
-            self.step += 1
-
-            # 1 Selection
+        self.completed_steps = start_step
+        while self.completed_steps < n_step + start_step:
+            check_budget()
+            self.step = self.completed_steps + 1
             self._select()
-            # print("depth: ", self.current_node.depth)
-
-            # 2 Expand
             self._expand(n=5)
-
-            if len(self.current_node.children) > 0:
-                # 3 Simulation
+            if self.current_node.children:
                 self._simulate()
-
-                # 4 Backpropagation
                 self._backprop()
+            self.completed_steps = self.step
+            print(f"Fine completed_step={self.completed_steps} max_reward={self.max_score}", flush=True)
 
-            print("---Fine MCTS step %d ---" % self.step)
-            print("MAX_SCORE:", self.max_score, self.max_score - self.init_score)
 
 class Pareto():
     """
@@ -576,6 +632,21 @@ class Pareto():
 
 @hydra.main(config_path="../config/", config_name="config")
 def main(cfg: DictConfig):
+    # Optional per-run seed for reproducible array jobs.  Existing jobs retain
+    # their previous nondeterministic behavior when the variable is unset.
+    random_seed = os.environ.get("GARGOYLES_RANDOM_SEED")
+    if random_seed is not None:
+        import random
+        import torch
+
+        random_seed = int(random_seed)
+        random.seed(random_seed)
+        np.random.seed(random_seed)
+        torch.manual_seed(random_seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(random_seed)
+        print(f"GARGOYLES_RANDOM_SEED={random_seed}")
+
     smiles_list = read_smilesset(hydra.utils.get_original_cwd()+"/data/zinc_250k.smi")
     sampler = Sampler(cfg, model_dir=cfg["sample"]["model_dir"], model_ver=cfg["sample"]["model_ver"])
     reward_module = getReward(name=cfg["mcts"]["reward_name"])
@@ -602,30 +673,51 @@ def main(cfg: DictConfig):
     #
     # print(np.mean(nums), np.std(nums))
 
+    install_request_timeout()
+    reward_module = BudgetedReward(reward_module,
+        journal=os.environ.get("GOBLET_REWARD_JOURNAL"))
     smiles = cfg["mcts"]["init_smiles"] #"CNC1(c2ccccc2)C2CC3C4OCC42C31C(C#N)=CN" #"CCC(CC(=O)N1CC1)C12CC3C(NC)(c4ccccc4)C1C31COC21" #"C=Cc1cccc(C2(NC)C3CC4C5OCC53C42)c1" #"c1ccccc1"
     # mcts = FineMCTS(seed_smiles=smiles, reward_module=reward_module, sampler=sampler)
     mcts = CoarseMCTS(seed_smiles=smiles, reward_module=reward_module, sampler=sampler)
-    mcts.search(
-        n_step_coarse=cfg["mcts"]["n_step"],
-        n_step_fine=cfg["mcts"]["n_step_fine"],
-    )
-
-    df = pd.DataFrame()
-
-    sim_list = []
+    # Files are created before search so wall-time stops retain useful output.
+    output_path = Path(hydra.utils.get_original_cwd()) / "data/result" / cfg["mcts"]["output_fname"]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     seed_fp = AllChem.GetMorganFingerprint(Chem.MolFromSmiles(smiles), 2)
-    for gent_smiles in mcts.generated_smiles["SMILES"]:
-        gent_fp = AllChem.GetMorganFingerprint(Chem.MolFromSmiles(gent_smiles), 2)
-        sim = DataStructs.TanimotoSimilarity(seed_fp, gent_fp)
-        sim_list.append(sim)
 
-    df["SMILES"] = mcts.generated_smiles["SMILES"]
-    df["Reward"] = mcts.generated_smiles["Reward"]
-    df["Sim"] = sim_list
-    df["Step"] = mcts.generated_smiles["Step"]
-    df["Imp"] = df["Reward"] - reward_module.reward(Chem.MolFromSmiles(smiles))
-    df = df.sort_values("Reward", ascending=False)
-    df.to_csv(hydra.utils.get_original_cwd()+f"/data/result/{cfg['mcts']['output_fname']}", index=True)
+    def save_progress(search):
+        frame = search.generated_smiles.copy()
+        for column in ("SMILES", "Reward", "Step", "Imp", "FineStepComplete"):
+            if column not in frame:
+                frame[column] = pd.Series(dtype="object")
+        frame["Sim"] = [DataStructs.TanimotoSimilarity(seed_fp,
+            AllChem.GetMorganFingerprint(Chem.MolFromSmiles(s), 2)) for s in frame["SMILES"]]
+        frame["Imp"] = frame["Reward"] - search.init_score
+        frame = frame.sort_values("Reward", ascending=False)
+        temporary = output_path.with_suffix(".csv.tmp")
+        frame.to_csv(temporary, index=False)
+        os.replace(temporary, output_path)
+        status = {"requested_steps": int(cfg["mcts"]["n_step"]),
+            "completed_steps": search.completed_steps, "stop_reason": search.stop_reason,
+            "complete": search.completed_steps >= int(cfg["mcts"]["n_step"]),
+            "rows": len(frame), "max_reward": search.max_score,
+            "initial_reward": search.init_score, "reward_calls": reward_module.calls,
+            "cache_hits": reward_module.cache_hits,
+            "unique_successful_rewards": len(reward_module.cache),
+            "coarse_updates": search.coarse_updates, "saved_at_epoch": time.time()}
+        status_path = output_path.with_suffix(".status.json")
+        status_tmp = status_path.with_suffix(".json.tmp")
+        status_tmp.write_text(json.dumps(status, indent=2, allow_nan=False) + "\n")
+        os.replace(status_tmp, status_path)
+
+    mcts.checkpoint = save_progress
+    try:
+        mcts.search(n_step_coarse=cfg["mcts"]["n_step"],
+                    n_step_fine=cfg["mcts"]["n_step_fine"])
+    except Exception:
+        mcts.stop_reason = "error"
+        save_progress(mcts)
+        raise
+    print(f"Saved {output_path}; completed_steps={mcts.completed_steps}; reason={mcts.stop_reason}", flush=True)
 
 
 if __name__ == '__main__':

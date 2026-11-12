@@ -49,13 +49,25 @@ Both use 200 sampling steps. These settings are in
 
 ## Output
 
-The result CSV contains:
+The result CSV is rewritten after every Coarse step, so a run stopped by its
+wall-time budget still leaves a complete, readable file. It contains:
 
 - `SMILES`: generated molecule;
 - `Reward`: target-specific ASBoltz reward;
 - `Sim`: Morgan-fingerprint Tanimoto similarity to the initial molecule;
 - `Step`: MCTS step at which the molecule was generated;
-- `Imp`: reward minus the initial-molecule reward.
+- `Imp`: reward minus the initial-molecule reward;
+- `FineStepComplete`: whether the Fine search for that step ran to completion.
+  Rows from a partially executed final step are kept but marked `False`.
+
+Alongside it, `<target>_<task>.status.json` records `requested_steps`,
+`completed_steps`, `stop_reason`, `complete`, the reward-call and cache-hit
+counts, and the best and initial rewards. **Use `completed_steps`, not the
+largest `Step` in the CSV, to decide how much search a run actually did.**
+
+`<target>_<task>.rewards.jsonl` journals every reward call with its SMILES,
+value, cache-hit flag, and elapsed time. Reward evaluation is memoized within
+a run; repeated molecules are not re-scored and are counted as cache hits.
 
 The metadata file records the git commit, target, task, search settings,
 package versions, GPU, input/checkpoint hashes, timestamps, and exit status.

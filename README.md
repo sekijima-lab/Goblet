@@ -15,6 +15,7 @@ The representative calculation is defined as follows:
 | Initial molecule | benzene (`c1ccccc1`) |
 | Reward | `ASBoltz` (Boltz-2 affinity with SA-score filtering and a target-specific pocket constraint) |
 | Coarse/fine MCTS steps | 1000 / 20 |
+| Search wall-time budget | 23 h of the 24 h job (`SEARCH_BUDGET_SECONDS`) |
 | Generator checkpoint | epoch 20 (`ckpt/pretrain/ver2/*-ep20.pth`) |
 | Boltz package | 2.2.1 |
 | Boltz inference seed | 42 (set in `Utils/boltz_api_constraints.py`) |
@@ -22,6 +23,11 @@ The representative calculation is defined as follows:
 The generator also samples stochastically. GPU kernels and sampling therefore
 mean that a repeated run is not expected to reproduce the CSV bit-for-bit; it
 reproduces the reported inputs, model versions, reward, and search budget.
+
+A run that exhausts its wall-time budget stops cleanly and saves. The number of
+Coarse steps actually executed is recorded in the companion
+`<target>_<task>.status.json`; read `completed_steps` from there rather than
+inferring it from the largest `Step` value in the CSV.
 
 ## Requirements
 

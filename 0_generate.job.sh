@@ -12,6 +12,9 @@ TASK_ID="${SGE_TASK_ID:-1}"
 INIT_SMILES="${INIT_SMILES:-c1ccccc1}"
 N_STEP_COARSE="${N_STEP_COARSE:-1000}"
 N_STEP_FINE="${N_STEP_FINE:-20}"
+# Stop the search one hour before the 24 h wall-time so the CSV and status file
+# are written cleanly instead of being killed mid-step.  Set to 0 to disable.
+SEARCH_BUDGET_SECONDS="${SEARCH_BUDGET_SECONDS:-82800}"
 GOBLET_ENV="${GOBLET_ENV:-goblet}"
 BOLTZ_ENV="${BOLTZ_ENV:-$GOBLET_ENV}"
 PROJECT_DIR="${SGE_O_WORKDIR:-$PWD}"
@@ -105,6 +108,7 @@ done
     echo "reward_name=ASBoltz"
     echo "n_step_coarse=$N_STEP_COARSE"
     echo "n_step_fine=$N_STEP_FINE"
+    echo "search_budget_seconds=$SEARCH_BUDGET_SECONDS"
     echo "generator_model_version=20"
     echo "goblet_env=$GOBLET_ENV"
     echo "boltz_env=$BOLTZ_ENV"
@@ -160,6 +164,11 @@ if [[ "$api_ready" != true ]]; then
     echo "ERROR: Boltz API did not become ready within 6 minutes; see $API_LOG" >&2
     exit 1
 fi
+
+if [[ "$SEARCH_BUDGET_SECONDS" -gt 0 ]]; then
+    export GOBLET_SEARCH_DEADLINE_EPOCH=$(( $(date +%s) + SEARCH_BUDGET_SECONDS ))
+fi
+export GOBLET_REWARD_JOURNAL="${PROJECT_DIR}/data/result/${TARGET}_${TASK_ID}.rewards.jsonl"
 
 python -u Generator/mcts.py \
     "mcts.init_smiles='${INIT_SMILES}'" \
